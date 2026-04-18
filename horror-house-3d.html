@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>👻 HORROR HOUSE 3D</title>
+<link href="https://fonts.googleapis.com/css2?family=Creepster&family=Special+Elite&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; overflow:hidden; font-family:'Special Elite',cursive; }
+
+#canvas { display:block; width:100vw; height:100vh; }
+
+/* ── OVERLAY UI ── */
+#ui {
+  position:fixed; inset:0; pointer-events:none; z-index:10;
+}
+
+/* crosshair */
+#crosshair {
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  width:24px; height:24px; opacity:0.7;
+}
+#crosshair::before,#crosshair::after {
+  content:''; position:absolute; background:#e8d5a3;
+  border-radius:2px;
+}
+#crosshair::before { width:2px; height:100%; left:50%; transform:translateX(-50%); }
+#crosshair::after  { width:100%; height:2px; top:50%; transform:translateY(-50%); }
+
+/* top bar */
+#topbar {
+  position:absolute; top:0; left:0; right:0;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 20px;
+  background:linear-gradient(180deg,rgba(0,0,0,0.8) 0%,transparent 100%);
+}
+#room-name {
+  font-family:'Creepster',cursive; font-size:1.5rem;
+  color:#e8d5a3; letter-spacing:3px;
+  text-shadow:0 0 20px rgba(255,100,0,0.6);
+}
+#sanity-bar {
+  display:flex; align-items:center; gap:8px; color:#aaa; font-size:0.9rem;
+}
+#sanity-fill {
+  width:120px; height:8px; background:#222; border-radius:4px; overflow:hidden;
+  border:1px solid #444;
+}
+#sanity-inner { height:100%; background:#8b0000; border-radius:4px; transition:width 0.5s; width:100%; }
+
+/* bottom hint */
+#hint-strip {
+  position:absolute; bottom:80px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,0.7); border:1px solid rgba(232,213,163,0.2);
+  border-radius:8px; padding:10px 20px; max-width:500px; text-align:center;
+  color:#c8a97e; font-size:0.9rem; line-height:1.5;
+  transition:opacity 0.5s;
+}
+
+/* controls bar */
+#controls {
+  position:absolute; bottom:0; left:0; right:0;
+  display:flex; justify-content:center; gap:8px;
+  padding:14px 20px;
+  background:linear-gradient(0deg,rgba(0,0,0,0.85) 0%,transparent 100%);
+}
+#controls kbd {
+  background:rgba(232,213,163,0.1); border:1px solid rgba(232,213,163,0.3);
+  color:#e8d5a3; border-radius:6px; padding:4px 10px; font-size:0.85rem;
+  font-family:'Special Elite',cursive;
+}
+
+/* interaction prompt */
+#interact-prompt {
+  position:absolute; bottom:130px; left:50%; transform:translateX(-50%);
+  background:rgba(139,0,0,0.7); border:1px solid #8b0000;
+  border-radius:8px; padding:8px 18px;
+  color:#fff; font-size:1rem; letter-spacing:1px;
+  animation:pulse-prompt 1s ease-in-out infinite;
+  display:none;
+}
+@keyframes pulse-prompt { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+/* ── STORY PANEL ── */
+#story-panel {
+  position:fixed; inset:0; z-index:50;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,0.92);
+  pointer-events:all;
+  transition:opacity 0.4s;
+}
+#story-panel.hidden { opacity:0; pointer-events:none; }
+#story-box {
+  background:#0d0d0d; border:1px solid #3a2a1a;
+  border-radius:16px; max-width:560px; width:90%;
+  padding:36px; position:relative;
+  box-shadow:0 0 60px rgba(139,0,0,0.3), inset 0 0 40px rgba(0,0,0,0.8);
+}
+#story-box::before {
+  content:''; position:absolute; inset:0; border-radius:16px;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(255,255,255,0.01) 2px,rgba(255,255,255,0.01) 4px);
+  pointer-events:none;
+}
+#story-icon { font-size:2.8rem; text-align:center; display:block; margin-bottom:14px; animation:flicker-icon 1.5s ease-in-out infinite alternate; }
+@keyframes flicker-icon { 0%{opacity:1} 100%{opacity:0.6} }
+#story-title {
+  font-family:'Creepster',cursive; font-size:2rem;
+  color:#c0392b; text-align:center; margin-bottom:16px;
+  text-shadow:0 0 20px rgba(192,57,43,0.7);
+  letter-spacing:3px;
+}
+#story-text {
+  color:#c8b89a; line-height:1.8; font-size:1rem;
+  margin-bottom:22px; text-align:center; min-height:80px;
+}
+#story-choices { display:flex; flex-direction:column; gap:10px; }
+.choice-btn {
+  background:rgba(139,0,0,0.15); border:1px solid rgba(139,0,0,0.4);
+  color:#ddd; font-family:'Special Elite',cursive;
+  font-size:0.95rem; padding:12px 18px; border-radius:8px;
+  cursor:pointer; transition:all 0.2s; text-align:left; width:100%;
+}
+.choice-btn:hover { background:rgba(139,0,0,0.45); color:#fff; transform:translateX(6px); border-color:#c0392b; }
+
+#story-hint {
+  margin-top:16px; padding:10px 14px;
+  background:rgba(57,255,20,0.05); border:1px dashed rgba(57,255,20,0.25);
+  border-radius:8px; color:#39ff14; font-size:0.85rem; display:none;
+}
+#hint-toggle {
+  background:transparent; border:1px solid rgba(57,255,20,0.3);
+  color:#39ff14; font-family:'Special Elite',cursive;
+  padding:5px 14px; border-radius:20px; cursor:pointer;
+  font-size:0.8rem; margin-top:12px; transition:all 0.2s;
+}
+#hint-toggle:hover { background:rgba(57,255,20,0.1); }
+
+/* ── TITLE SCREEN ── */
+#title-screen {
+  position:fixed; inset:0; z-index:100;
+  display:flex; align-items:center; justify-content:center; flex-direction:column;
+  background:radial-gradient(ellipse at center, #0d0000 0%, #000 70%);
+  pointer-events:all;
+}
+#title-screen h1 {
+  font-family:'Creepster',cursive; font-size:clamp(3rem,8vw,6rem);
+  color:#8b0000; text-shadow:0 0 40px rgba(139,0,0,0.8), 0 0 80px rgba(139,0,0,0.3);
+  letter-spacing:6px; animation:title-flicker 3s ease-in-out infinite;
+  text-align:center;
+}
+@keyframes title-flicker {
+  0%,100%{text-shadow:0 0 40px rgba(139,0,0,0.8), 0 0 80px rgba(139,0,0,0.3)}
+  50%{text-shadow:0 0 20px rgba(139,0,0,0.4), 0 0 40px rgba(139,0,0,0.1)}
+}
+#title-screen p {
+  color:#7a6a5a; font-size:1.1rem; margin:16px 0 40px; text-align:center;
+  line-height:1.8; max-width:400px; padding:0 20px;
+}
+#start-btn {
+  background:#8b0000; color:#fff; border:none;
+  font-family:'Creepster',cursive; font-size:1.5rem;
+  padding:14px 48px; border-radius:8px; cursor:pointer;
+  letter-spacing:3px; transition:all 0.3s;
+  box-shadow:0 0 30px rgba(139,0,0,0.5);
+}
+#start-btn:hover { background:#c0392b; transform:scale(1.05); box-shadow:0 0 50px rgba(192,57,43,0.7); }
+.skull-deco { font-size:2rem; margin:0 10px; animation:spin-slow 8s linear infinite; display:inline-block; }
+@keyframes spin-slow { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
+
+/* ── JUMPSCARE ── */
+#jumpscare {
+  position:fixed; inset:0; z-index:200;
+  display:none; align-items:center; justify-content:center; flex-direction:column;
+  background:#000;
+}
+#jumpscare.active { display:flex; animation:scare-flash 0.1s steps(1) infinite; }
+@keyframes scare-flash { 0%,100%{background:#000} 50%{background:#200000} }
+#scare-face {
+  font-size:clamp(150px,35vw,280px);
+  animation:scare-zoom 0.7s ease-out forwards;
+  filter:drop-shadow(0 0 60px red);
+}
+@keyframes scare-zoom { from{transform:scale(0.05) rotate(-20deg)} to{transform:scale(1.1) rotate(5deg)} }
+#scare-text {
+  font-family:'Creepster',cursive;
+  font-size:clamp(2.5rem,7vw,5rem);
+  color:#fff; letter-spacing:8px; margin-top:20px;
+  text-shadow:0 0 40px red;
+  animation:scare-zoom 0.7s ease-out forwards;
+}
+
+/* ── WIN / LOSE ── */
+#endscreen {
+  position:fixed; inset:0; z-index:150;
+  display:none; align-items:center; justify-content:center;
+  background:rgba(0,0,0,0.95); pointer-events:all;
+  flex-direction:column; text-align:center;
+}
+#endscreen.active { display:flex; }
+#end-icon { font-size:5rem; margin-bottom:20px; }
+#end-title { font-family:'Creepster',cursive; font-size:3.5rem; color:#e8d5a3; letter-spacing:4px; }
+#end-msg { color:#8a7a6a; font-size:1.1rem; max-width:420px; line-height:1.8; margin:16px 0 30px; }
+#restart-btn {
+  background:transparent; border:2px solid #8b0000; color:#c0392b;
+  font-family:'Creepster',cursive; font-size:1.4rem;
+  padding:12px 40px; border-radius:8px; cursor:pointer;
+  letter-spacing:3px; transition:all 0.3s;
+}
+#restart-btn:hover { background:#8b0000; color:#fff; }
+
+/* vignette */
+#vignette {
+  position:fixed; inset:0; z-index:9; pointer-events:none;
+  background:radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.7) 100%);
+}
+
+/* blood drip effect */
+#blood-overlay {
+  position:fixed; inset:0; z-index:8; pointer-events:none;
+  opacity:0; transition:opacity 1s;
+  background:linear-gradient(180deg,rgba(139,0,0,0.15) 0%,transparent 30%);
+}
+
+/* flicker overlay */
+#flicker-overlay {
+  position:fixed; inset:0; z-index:7; pointer-events:none;
+  background:rgba(0,0,0,0); transition:background 0.05s;
+}
+</style>
+</head>
+<body>
+
+<!-- ── TITLE SCREEN ── -->
+<div id="title-screen">
+  <div>
+    <span class="skull-deco">💀</span>
+    <span style="font-family:'Creepster',cursive;font-size:0.9rem;color:#555;letter-spacing:4px;">PRESENTS</span>
+    <span class="skull-deco">💀</span>
+  </div>
+  <h1>HORROR HOUSE</h1>
+  <p>You woke up inside a haunted mansion.<br>The doors are locked. Something is watching.<br><em style="color:#5a4a3a">...but also, something is giggling?</em></p>
+  <button id="start-btn" onclick="startGame()">ENTER IF YOU DARE</button>
+  <p style="margin-top:24px; font-size:0.8rem; color:#333;">WASD / Arrow Keys to move · Mouse to look · E to interact</p>
+</div>
+
+<!-- ── MAIN CANVAS ── -->
+<canvas id="canvas"></canvas>
+
+<!-- ── OVERLAYS ── -->
+<div id="vignette"></div>
+<div id="blood-overlay"></div>
+<div id="flicker-overlay"></div>
+
+<!-- ── HUD ── -->
+<div id="ui">
+  <div id="crosshair"></div>
+  <div id="topbar">
+    <div id="room-name">THE FOYER</div>
+    <div id="sanity-bar">
+      😰 SANITY
+      <div id="sanity-fill"><div id="sanity-inner"></div></div>
+    </div>
+  </div>
+  <div id="hint-strip">🕯️ Use WASD to walk · Mouse to look around · Press E to interact with objects</div>
+  <div id="interact-prompt">[ E ] Examine</div>
+  <div id="controls">
+    <kbd>W A S D</kbd>
+    <span style="color:#555">move</span>
+    <kbd>Mouse</kbd>
+    <span style="color:#555">look</span>
+    <kbd>E</kbd>
+    <span style="color:#555">interact</span>
+    <kbd>ESC</kbd>
+    <span style="color:#555">unlock cursor</span>
+  </div>
+</div>
+
+<!-- ── STORY PANEL ── -->
+<div id="story-panel" class="hidden">
+  <div id="story-box">
+    <span id="story-icon">🕯️</span>
+    <div id="story-title">ENCOUNTER</div>
+    <div id="story-text"></div>
+    <div id="story-choices"></div>
+    <button id="hint-toggle" onclick="toggleStoryHint()">💡 Hint</button>
+    <div id="story-hint"></div>
+  </div>
+</div>
+
+<!-- ── JUMPSCARE ── -->
+<div id="jumpscare">
+  <div id="scare-face">👹</div>
+  <div id="scare-text">BOO!!!</div>
+</div>
+
+<!-- ── END SCREEN ── -->
+<div id="endscreen">
+  <div id="end-icon">🏆</div>
+  <div id="end-title">YOU ESCAPED!</div>
+  <div id="end-msg"></div>
+  <button id="restart-btn" onclick="location.reload()">PLAY AGAIN</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ═══════════════════════════════════════════
+   HORROR HOUSE 3D  —  Three.js First Person
+═══════════════════════════════════════════ */
+
+// ── State ──
+let gameStarted = false;
+let sanity = 100;
+let storyActive = false;
+let currentHint = '';
+let interactTarget = null;
+let jumpscareTriggered = false;
+
+// ── Three.js core ──
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setClearColor(0x000000);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.6;
+renderer.outputEncoding = THREE.sRGBEncoding;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x050202, 0.045);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.7, 0);
+
+// ── Clock ──
+const clock = new THREE.Clock();
+
+// ── Pointer lock ──
+let pointerLocked = false;
+let yaw = 0, pitch = 0;
+canvas.addEventListener('click', () => {
+  if(gameStarted && !storyActive) canvas.requestPointerLock();
+});
+document.addEventListener('pointerlockchange', () => {
+  pointerLocked = document.pointerLockElement === canvas;
+});
+document.addEventListener('mousemove', e => {
+  if(!pointerLocked || storyActive) return;
+  yaw   -= e.movementX * 0.002;
+  pitch -= e.movementY * 0.002;
+  pitch = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, pitch));
+});
+
+// ── Keys ──
+const keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if(e.code === 'KeyE' && !storyActive && interactTarget) triggerInteract();
+  if(e.code === 'Escape') document.exitPointerLock();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ── Materials ──
+function makeMat(hex, roughness=0.9, metalness=0) {
+  return new THREE.MeshStandardMaterial({ color: hex, roughness, metalness });
+}
+
+const mats = {
+  floor:    makeMat(0x1a1008),
+  wall:     makeMat(0x1c1410),
+  ceiling:  makeMat(0x0d0a08),
+  wood:     makeMat(0x2a1a08),
+  stone:    makeMat(0x1a1a1a),
+  red:      makeMat(0x6b0000),
+  bone:     makeMat(0x8a7a5a),
+  ghost:    new THREE.MeshStandardMaterial({ color:0xaabbff, transparent:true, opacity:0.45, roughness:0.2 }),
+  candle:   makeMat(0xffa020),
+  door:     makeMat(0x3a2010),
+  mirror:   new THREE.MeshStandardMaterial({ color:0x334455, roughness:0.05, metalness:0.9 }),
+};
+
+// ── Room definitions ──
+// Each room: { id, name, bounds:{x1,z1,x2,z2}, color hint }
+const rooms = [
+  { id:'foyer',    name:'THE FOYER',       x:-8,  z:-8,  w:16, d:16 },
+  { id:'hallway',  name:'THE DARK HALLWAY',x: 8,  z:-3,  w:14, d: 6 },
+  { id:'library',  name:'THE CURSED LIBRARY', x:22, z:-8, w:14, d:16 },
+  { id:'kitchen',  name:'THE BLOODY KITCHEN', x: 8, z: 3, w:14, d:12 },
+  { id:'cellar',   name:'THE CELLAR STAIRS',  x:22, z: 3, w:10, d:10 },
+];
+
+// ── Build geometry ──
+const WALL_H = 4;
+function box(w,h,d,mat,x,y,z, rx=0,ry=0,rz=0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+  m.position.set(x,y,z);
+  m.rotation.set(rx,ry,rz);
+  m.castShadow = true; m.receiveShadow = true;
+  scene.add(m); return m;
+}
+
+// ── Floor plane ──
+const floorGeo = new THREE.PlaneGeometry(100, 100, 20, 20);
+// tile-ish look via vertex color variation
+const floorMesh = new THREE.Mesh(floorGeo, mats.floor);
+floorMesh.rotation.x = -Math.PI/2;
+floorMesh.receiveShadow = true;
+scene.add(floorMesh);
+
+// ── Ceiling ──
+const ceilMesh = new THREE.Mesh(new THREE.PlaneGeometry(100,100), mats.ceiling);
+ceilMesh.rotation.x = Math.PI/2;
+ceilMesh.position.y = WALL_H;
+scene.add(ceilMesh);
+
+// ── Build walls for all rooms ──
+const colliders = []; // {x1,z1,x2,z2}
+
+function buildRoom(rx, rz, rw, rd) {
+  const hh = WALL_H/2;
+  const cx = rx + rw/2, cz = rz + rd/2;
+  const thick = 0.4;
+  // N wall
+  box(rw+thick, WALL_H, thick, mats.wall, cx, hh, rz);
+  colliders.push({x1:rx,z1:rz-thick/2,x2:rx+rw,z2:rz+thick/2});
+  // S wall
+  box(rw+thick, WALL_H, thick, mats.wall, cx, hh, rz+rd);
+  colliders.push({x1:rx,z1:rz+rd-thick/2,x2:rx+rw,z2:rz+rd+thick/2});
+  // W wall
+  box(thick, WALL_H, rd, mats.wall, rx, hh, cz);
+  colliders.push({x1:rx-thick/2,z1:rz,x2:rx+thick/2,z2:rz+rd});
+  // E wall
+  box(thick, WALL_H, rd, mats.wall, rx+rw, hh, cz);
+  colliders.push({x1:rx+rw-thick/2,z1:rz,x2:rx+rw+thick/2,z2:rz+rd});
+}
+
+// Foyer
+buildRoom(-8,-8,16,16);
+// Hallway (opens east from foyer, north+south walls only since it shares with foyer)
+buildRoom(8,-3,14,6);
+// Library
+buildRoom(22,-8,14,16);
+// Kitchen
+buildRoom(8, 3,14,12);
+// Cellar area
+buildRoom(22, 3,10,10);
+
+// ── Atmospheric lights ──
+const ambientLight = new THREE.AmbientLight(0x050308, 1);
+scene.add(ambientLight);
+
+function candleLight(x,y,z,intensity=2.5,color=0xff8020) {
+  const l = new THREE.PointLight(color, intensity, 8);
+  l.position.set(x,y,z);
+  l.castShadow = true;
+  l.shadow.mapSize.width = 256;
+  l.shadow.mapSize.height = 256;
+  scene.add(l);
+  return l;
+}
+
+const lights = [];
+lights.push(candleLight(0,    2.5,  0,   2.0, 0xff6010));  // foyer
+lights.push(candleLight(15,   2.2,  0,   1.5, 0xff5000));  // hallway
+lights.push(candleLight(29,   2.5,  0,   1.8, 0xff4000));  // library
+lights.push(candleLight(15,   2.2,  8,   1.5, 0xff3000));  // kitchen
+lights.push(candleLight(27,   2.5,  8,   1.2, 0xff2000));  // cellar
+lights.push(candleLight(-3,   2.5,  5,   1.0, 0x8800ff));  // purple corner
+
+// Red emergency flicker light
+const flickerLight = new THREE.PointLight(0x8b0000, 0, 12);
+flickerLight.position.set(0, 3, 0);
+scene.add(flickerLight);
+
+// ── Props ──
+const interactables = [];
+
+function addCandle(x,y,z) {
+  // base
+  const base = box(0.1,0.25,0.1, mats.bone,  x,y+0.125,z);
+  // flame
+  const flame = box(0.06,0.12,0.06, mats.candle, x,y+0.31,z);
+  flame.userData.isFlame = true;
+  return base;
+}
+
+function addTable(x,z, rotY=0) {
+  const top = box(1.4,0.08,0.8, mats.wood, x, 0.76, z, 0,rotY,0);
+  box(0.08,0.75,0.08, mats.wood, x-0.6, 0.375, z-0.3, 0,rotY,0);
+  box(0.08,0.75,0.08, mats.wood, x+0.6, 0.375, z-0.3, 0,rotY,0);
+  box(0.08,0.75,0.08, mats.wood, x-0.6, 0.375, z+0.3, 0,rotY,0);
+  box(0.08,0.75,0.08, mats.wood, x+0.6, 0.375, z+0.3, 0,rotY,0);
+  addCandle(x, 0.8, z);
+  return top;
+}
+
+function addChair(x,z,rotY=0) {
+  box(0.5,0.04,0.5, mats.wood, x,0.5,z, 0,rotY,0);
+  box(0.5,0.6,0.04, mats.wood, x,0.8,z-0.23, 0,rotY,0);
+  box(0.04,0.5,0.04,mats.wood, x-0.2,0.25,z-0.2,0,rotY,0);
+  box(0.04,0.5,0.04,mats.wood, x+0.2,0.25,z-0.2,0,rotY,0);
+  box(0.04,0.5,0.04,mats.wood, x-0.2,0.25,z+0.2,0,rotY,0);
+  box(0.04,0.5,0.04,mats.wood, x+0.2,0.25,z+0.2,0,rotY,0);
+}
+
+function addBookcase(x,z, rotY=0) {
+  box(1.5,2.4,0.3, mats.wood, x, 1.2, z, 0,rotY,0);
+  for(let i=0;i<4;i++) {
+    const colors=[0x6a1020,0x102050,0x105030,0x502010];
+    const bm = makeMat(colors[i]);
+    box(0.12,0.3,0.22, bm, x-0.5+(i*0.33), 0.5+i*0.55, z+(rotY===0?-0.04:0.04), 0,rotY,0);
+    box(0.12,0.3,0.22, bm, x-0.2+(i*0.1), 1.0+i*0.18, z+(rotY===0?-0.04:0.04), 0,rotY,0);
+  }
+}
+
+// Foyer props
+addTable(-2, 2);
+addTable(2, -2, Math.PI/6);
+addChair(-4, 4);
+addChair(4, -4, Math.PI/3);
+addCandle(-3, 0, -5);
+addCandle(3, 0, -5);
+
+// Foyer: painting (interactable)
+const paintingGeo = new THREE.BoxGeometry(1.6, 1.2, 0.05);
+const paintingMesh = new THREE.Mesh(paintingGeo, makeMat(0x2a1505));
+paintingMesh.position.set(-3, 2.2, -7.7);
+paintingMesh.castShadow = true;
+scene.add(paintingMesh);
+// Frame
+box(1.7, 1.3, 0.04, makeMat(0x5a3a10), -3, 2.2, -7.75);
+interactables.push({
+  mesh: paintingMesh,
+  range: 3,
+  story: {
+    icon:'🖼️', title:'THE PORTRAIT',
+    text:'A painting of a Victorian family — all smiling normally except the youngest child, whose eyes follow you. The plaque reads: "The Merriweather Family, 1887. Only two survived the winter. The painting survived all of them."\n\nThe child\'s smile widens. You definitely didn\'t imagine that.',
+    choices:[
+      {text:'😨 Back away slowly', cb:()=>{ closeStory(); drainSanity(8); showHint('The portraits are watching. Maybe don\'t look at them? (Too late.)'); }},
+      {text:'👋 Wave at the child', cb:()=>{ closeStory(); doJumpscare('😱','IT WAVED BACK!!'); }},
+    ],
+    hint:'Paintings in horror houses are always bad news. This is doubly so when they smile.'
+  }
+});
+
+// Hallway props
+addCandle(12, 0, 1);
+addCandle(18, 0, -1);
+// Skull on pedestal
+const pedestal = box(0.3,0.6,0.3, mats.stone, 14, 0.3, 0);
+const skull = new THREE.Mesh(new THREE.SphereGeometry(0.18,8,8), mats.bone);
+skull.position.set(14, 0.78, 0);
+skull.scale.set(1, 1.1, 0.95);
+scene.add(skull);
+interactables.push({
+  mesh: skull,
+  range: 3,
+  story:{
+    icon:'💀', title:'THE SKULL',
+    text:'"PROPERTY OF GERALD" is scrawled on the bottom.\n\nPoor Gerald.\n\nThe skull radiates a vague sadness and also a faint smell of lavender, which is somehow more unsettling than if it smelled of death.',
+    choices:[
+      {text:'🪄 Take the skull (bad idea)', cb:()=>{ closeStory(); drainSanity(15); showHint('You now carry Gerald. He is not happy about this.'); }},
+      {text:'🙏 Leave Gerald in peace', cb:()=>{ closeStory(); healSanity(5); showHint('Respect for the dead restores your soul — a little.'); }},
+    ],
+    hint:'Reading the name tag is always a good first step. Respect your elders, even dead ones.'
+  }
+});
+
+// Library props
+for(let i=0;i<5;i++) {
+  addBookcase(23+(i%3)*2.5, -7, 0);
+}
+addTable(28, 0);
+addChair(28, 1.5);
+addChair(28, -1.5, Math.PI);
+
+// Spooky book (interactable)
+const bookMesh = box(0.2,0.28,0.18, makeMat(0x8b0000), 28, 0.92, 0.3);
+interactables.push({
+  mesh: bookMesh,
+  range: 3,
+  story:{
+    icon:'📕', title:'"HOW TO SURVIVE" — A GHOST\'S GUIDE',
+    text:'"Chapter 1: You won\'t."\n\n"Chapter 2: But if you insist, try screaming. It does nothing, but we find it entertaining."\n\n"Chapter 3: The exit is behind the mirror in the cellar. PS — we moved the mirror. PPS — we moved it back. PPPS — we\'re lying."\n\nThe book closes itself.',
+    choices:[
+      {text:'📖 Read Chapter 4', cb:()=>{ closeStory(); doJumpscare('👻','BOO! (Chapter 4 was just this.)'); }},
+      {text:'💡 Remember the mirror clue', cb:()=>{ closeStory(); healSanity(10); unlockCellarClue(); showHint('The mirror in the cellar hides the exit. Now you know!'); }},
+    ],
+    hint:'Always read the book. Even in horror. ESPECIALLY in horror. The clue is in Chapter 3.'
+  }
+});
+
+// Kitchen props
+addTable(12, 8);
+addTable(16, 10, Math.PI/4);
+// Knife block (interactable) — just spooky, not deadly
+const knifeBlock = box(0.4, 0.5, 0.2, mats.wood, 20, 0.55, 5);
+interactables.push({
+  mesh: knifeBlock,
+  range: 3,
+  story:{
+    icon:'🔪', title:'THE KNIFE BLOCK',
+    text:'Eight slots. Eight knives. You count them carefully.\n\nThere are nine knives.\n\nYou count again. Eight.\n\nYou count a third time. The knives count YOU back. You stop counting.',
+    choices:[
+      {text:'🧮 Count one more time', cb:()=>{ closeStory(); doJumpscare('🔪','NINE!!'); }},
+      {text:'🚶 Walk away. Just walk away.', cb:()=>{ closeStory(); drainSanity(5); showHint('Sometimes walking away is the only sane choice.'); }},
+    ],
+    hint:'When the knives are watching, the correct number is always one too many. Don\'t count a third time.'
+  }
+});
+
+// Refrigerator (door to cellar clue)
+const fridge = box(0.8,1.8,0.7, makeMat(0x2a2a2a), 10, 0.9, 14.5);
+interactables.push({
+  mesh: fridge,
+  range: 3,
+  story:{
+    icon:'❄️', title:'THE FRIDGE',
+    text:'You open the fridge.\n\nInside: one (1) single grape.\n\nA note next to it reads: "Do NOT eat Greg."\n\nYou do not eat Greg. You close the fridge and silently promise to always respect Greg.',
+    choices:[
+      {text:'🍇 Eat Greg (MONSTER)', cb:()=>{ closeStory(); drainSanity(20); showHint('You ate Greg. The house knows. The house judges you.'); }},
+      {text:'🙅 Respect Greg', cb:()=>{ closeStory(); healSanity(8); showHint('Greg appreciates your restraint. Your sanity is restored.'); }},
+    ],
+    hint:'Respect the grape. The correct answer is always to respect the grape.'
+  }
+});
+
+// ── Cellar / Exit area ──
+let cellarClueFound = false;
+let exitUnlocked = false;
+
+// Mirror (the exit mechanic)
+const mirrorMesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.0, 0.06), mats.mirror);
+mirrorMesh.position.set(31.8, 1.0, 8);
+mirrorMesh.rotation.y = Math.PI/2;
+scene.add(mirrorMesh);
+// Mirror frame
+box(0.07, 2.1, 1.3, makeMat(0x5a3a10), 31.85, 1.0, 8, 0, Math.PI/2, 0);
+
+interactables.push({
+  mesh: mirrorMesh,
+  range: 3,
+  story:{
+    icon:'🪞', title:'THE MIRROR',
+    text: () => cellarClueFound
+      ? '"Your reflection smiles — but you\'re not smiling.\n\nA door handle materialises in the glass. This is it. This is the exit.\n\nYour reflection winks. You wink back out of pure politeness.\n\nThe mirror swings open."'
+      : '"Your reflection stares back.\n\nSlowly, deliberately, it raises a finger to its lips.\n\nShhh.\n\nYou feel like you\'re missing something important."',
+    choices: () => cellarClueFound ? [
+      {text:'🚪 Step through the mirror', cb:()=>{ closeStory(); triggerWin(); }},
+      {text:'🤔 Check reflection once more', cb:()=>{ closeStory(); doJumpscare('😈','YOUR REFLECTION DOESN\'T FOLLOW!!'); }},
+    ] : [
+      {text:'😰 Back away', cb:()=>{ closeStory(); drainSanity(10); showHint('You need a clue before the mirror will open. Try the library.'); }},
+    ],
+    hint: () => cellarClueFound ? 'The mirror is the exit — step through!' : 'You need to find a clue first. Have you checked the library?'
+  }
+});
+
+// Cellar candelabra
+addCandle(24, 0, 6);
+addCandle(24, 0, 10);
+// Sarcophagus shape
+box(1.8, 0.5, 0.7, mats.stone, 27, 0.25, 8);
+box(1.8, 0.1, 0.7, makeMat(0x252520), 27, 0.52, 8);
+// Bones scattered
+for(let i=0;i<6;i++) {
+  box(0.04,0.04, 0.3+Math.random()*0.3, mats.bone,
+    22+Math.random()*8, 0.02, 4+Math.random()*8,
+    Math.random()*Math.PI, Math.random()*Math.PI, 0);
+}
+
+// ── Ghost entity (floating, drifts) ──
+const ghostGeo = new THREE.SphereGeometry(0.35, 8, 8);
+const ghostMesh = new THREE.Mesh(ghostGeo, mats.ghost);
+ghostMesh.position.set(15, 1.8, 0);
+scene.add(ghostMesh);
+// Ghost "tail"
+const tailGeo = new THREE.ConeGeometry(0.35, 0.5, 8);
+const tailMesh = new THREE.Mesh(tailGeo, mats.ghost);
+tailMesh.position.set(0, -0.35, 0);
+tailMesh.rotation.x = Math.PI;
+ghostMesh.add(tailMesh);
+// Eyes
+function ghostEye(ox) {
+  const e = new THREE.Mesh(new THREE.SphereGeometry(0.06,6,6), makeMat(0x000000));
+  e.position.set(ox, 0.1, 0.3);
+  ghostMesh.add(e);
+}
+ghostEye(-0.12); ghostEye(0.12);
+
+let ghostPathT = 0;
+
+// ── Raycaster for interaction ──
+const raycaster = new THREE.Raycaster();
+const interactMeshes = interactables.map(i => i.mesh);
+
+// ── Collision ──
+function collides(nx, nz) {
+  const r = 0.4;
+  for(const c of colliders) {
+    if(nx+r > c.x1 && nx-r < c.x2 && nz+r > c.z1 && nz-r < c.z2) return true;
+  }
+  return false;
+}
+
+// ── Current room detection ──
+function detectRoom() {
+  const px = camera.position.x, pz = camera.position.z;
+  for(const r of rooms) {
+    if(px > r.x && px < r.x+r.w && pz > r.z && pz < r.z+r.d) return r;
+  }
+  return null;
+}
+let lastRoom = null;
+
+// ── Helpers ──
+function drainSanity(n) {
+  sanity = Math.max(0, sanity - n);
+  document.getElementById('sanity-inner').style.width = sanity + '%';
+  document.getElementById('blood-overlay').style.opacity = (1 - sanity/100) * 0.6;
+  if(sanity <= 0) triggerInsanityEnd();
+}
+function healSanity(n) {
+  sanity = Math.min(100, sanity + n);
+  document.getElementById('sanity-inner').style.width = sanity + '%';
+  document.getElementById('blood-overlay').style.opacity = (1 - sanity/100) * 0.6;
+}
+
+function showHint(msg) {
+  const el = document.getElementById('hint-strip');
+  el.textContent = '💡 ' + msg;
+  el.style.opacity = '1';
+  setTimeout(() => { el.style.opacity = '0.3'; }, 5000);
+}
+
+function unlockCellarClue() {
+  cellarClueFound = true;
+  showHint('📕 The mirror in the cellar hides the exit! Head to the cellar!');
+}
+
+function openStory(data) {
+  if(storyActive) return;
+  storyActive = true;
+  document.exitPointerLock();
+  const panel = document.getElementById('story-panel');
+  panel.classList.remove('hidden');
+
+  const icon   = typeof data.icon  === 'function' ? data.icon()  : data.icon;
+  const title  = typeof data.title === 'function' ? data.title() : data.title;
+  const text   = typeof data.text  === 'function' ? data.text()  : data.text;
+  const hint   = typeof data.hint  === 'function' ? data.hint()  : data.hint;
+  const choices= typeof data.choices==='function' ? data.choices() : data.choices;
+
+  document.getElementById('story-icon').textContent  = icon;
+  document.getElementById('story-title').textContent = title;
+  document.getElementById('story-text').innerHTML    = text.replace(/\n/g,'<br>');
+  currentHint = hint;
+  document.getElementById('story-hint').textContent = '🕯️ ' + hint;
+  document.getElementById('story-hint').style.display = 'none';
+
+  const cb = document.getElementById('story-choices');
+  cb.innerHTML = '';
+  choices.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.textContent = c.text;
+    btn.onclick = c.cb;
+    cb.appendChild(btn);
+  });
+}
+
+function closeStory() {
+  document.getElementById('story-panel').classList.add('hidden');
+  storyActive = false;
+}
+
+function toggleStoryHint() {
+  const h = document.getElementById('story-hint');
+  h.style.display = h.style.display === 'none' ? 'block' : 'none';
+}
+
+const jumpFaces  = ['👹','💀','🧟','😱','👁️','🤡'];
+const jumpTexts  = ['BOO!!!','GOT YOU!!','HAHAHA!!','BEHIND YOU!!','LOOK AWAY!!'];
+function doJumpscare(face, text) {
+  closeStory();
+  const overlay = document.getElementById('jumpscare');
+  document.getElementById('scare-face').textContent = face || jumpFaces[Math.floor(Math.random()*jumpFaces.length)];
+  document.getElementById('scare-text').textContent = text || jumpTexts[Math.floor(Math.random()*jumpTexts.length)];
+  overlay.classList.add('active');
+  playScareSound();
+  drainSanity(20);
+  setTimeout(() => { overlay.classList.remove('active'); }, 1800);
+}
+
+function playScareSound() {
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    [80,160,60,200].forEach((freq,i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(freq, ctx.currentTime + i*0.05);
+      o.frequency.exponentialRampToValueAtTime(freq*4, ctx.currentTime + i*0.05 + 0.15);
+      g.gain.setValueAtTime(0.2, ctx.currentTime + i*0.05);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i*0.05 + 0.5);
+      o.start(ctx.currentTime + i*0.05);
+      o.stop(ctx.currentTime + i*0.05 + 0.5);
+    });
+  } catch(e){}
+}
+
+function triggerInteract() {
+  if(!interactTarget) return;
+  openStory(interactTarget.story);
+}
+
+function triggerWin() {
+  const end = document.getElementById('endscreen');
+  end.classList.add('active');
+  document.getElementById('end-icon').textContent = '🚪';
+  document.getElementById('end-title').textContent = 'YOU ESCAPED!';
+  document.getElementById('end-msg').innerHTML =
+    `You stepped through the mirror and tumbled onto your front lawn.<br><br>
+     Behind you, the mansion vanished. In its place: a parking lot.<br><br>
+     <em>"That's odd," you thought. "There used to be a Tesco here."</em><br><br>
+     <strong>Sanity remaining: ${sanity}%</strong><br>
+     <span style="color:#555">${sanity > 60 ? '🏆 Legendary escape!' : sanity > 30 ? '😅 Barely holding it together.' : '😵 Seek therapy immediately.'}</span>`;
+  document.exitPointerLock();
+}
+
+function triggerInsanityEnd() {
+  const end = document.getElementById('endscreen');
+  end.classList.add('active');
+  document.getElementById('end-icon').textContent = '😵';
+  document.getElementById('end-title').textContent = 'LOST YOUR MIND';
+  document.getElementById('end-msg').innerHTML =
+    'Your sanity crumbled completely.<br><br>You are now one of the ghosts.<br><br><em>Honestly? The benefits package is pretty good.</em><br><br><strong>Free dental. Unlimited haunting hours.</strong>';
+  document.exitPointerLock();
+}
+
+// ── Ambient drip sound ──
+function ambientCreak() {
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(200+Math.random()*100, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.6);
+    g.gain.setValueAtTime(0.05, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+    o.start(); o.stop(ctx.currentTime + 0.8);
+  } catch(e){}
+}
+setInterval(() => { if(gameStarted && !storyActive) ambientCreak(); }, 8000 + Math.random()*6000);
+
+// ── Random jumpscare timer ──
+let jumpscareScheduled = false;
+function scheduleRandomScare() {
+  if(jumpscareScheduled) return;
+  jumpscareScheduled = true;
+  setTimeout(() => {
+    if(gameStarted && !storyActive && !document.getElementById('endscreen').classList.contains('active')) {
+      doJumpscare(null, null);
+    }
+    jumpscareScheduled = false;
+    scheduleRandomScare();
+  }, 40000 + Math.random() * 30000);
+}
+
+// ── Start game ──
+function startGame() {
+  document.getElementById('title-screen').style.display = 'none';
+  gameStarted = true;
+  canvas.requestPointerLock();
+  scheduleRandomScare();
+  showHint('🕯️ Explore the house. Press E near glowing objects to interact. Find the exit!');
+}
+
+// ── Main loop ──
+let flickerT = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  const t  = clock.getElapsedTime();
+
+  if(!gameStarted) { renderer.render(scene, camera); return; }
+
+  // Player movement
+  if(!storyActive) {
+    const speed = 4 * dt;
+    const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+    const right   = new THREE.Vector3( Math.cos(yaw), 0, -Math.sin(yaw));
+    let moved = false;
+    let dx=0, dz=0;
+    if(keys['KeyW']||keys['ArrowUp'])    { dx+=forward.x*speed; dz+=forward.z*speed; moved=true; }
+    if(keys['KeyS']||keys['ArrowDown'])  { dx-=forward.x*speed; dz-=forward.z*speed; moved=true; }
+    if(keys['KeyA']||keys['ArrowLeft'])  { dx-=right.x*speed;   dz-=right.z*speed;   moved=true; }
+    if(keys['KeyD']||keys['ArrowRight']) { dx+=right.x*speed;   dz+=right.z*speed;   moved=true; }
+
+    const nx = camera.position.x + dx;
+    const nz = camera.position.z + dz;
+    if(!collides(nx, camera.position.z)) camera.position.x = nx;
+    if(!collides(camera.position.x, nz)) camera.position.z = nz;
+
+    // Bobbing
+    if(moved) camera.position.y = 1.7 + Math.sin(t * 8) * 0.04;
+    else       camera.position.y += (1.7 - camera.position.y) * 0.1;
+  }
+
+  // Camera rotation
+  const euler = new THREE.Euler(pitch, yaw, 0, 'YXZ');
+  camera.quaternion.setFromEuler(euler);
+
+  // Ghost path
+  ghostPathT += dt * 0.3;
+  ghostMesh.position.x = 15 + Math.sin(ghostPathT) * 3;
+  ghostMesh.position.z = Math.sin(ghostPathT * 0.7) * 2;
+  ghostMesh.position.y = 1.8 + Math.sin(ghostPathT * 2) * 0.3;
+  ghostMesh.rotation.y += dt * 0.5;
+
+  // Candle lights flicker
+  lights.forEach((l,i) => {
+    l.intensity = (i===0?2.0:1.5) + Math.sin(t*7+i*3)*0.3 + Math.random()*0.15;
+  });
+
+  // Flicker light random
+  flickerT += dt;
+  if(Math.random() < 0.005) {
+    flickerLight.intensity = 2 + Math.random()*3;
+    document.getElementById('flicker-overlay').style.background = 'rgba(30,0,0,0.2)';
+    setTimeout(() => {
+      flickerLight.intensity = 0;
+      document.getElementById('flicker-overlay').style.background = 'rgba(0,0,0,0)';
+    }, 80);
+  }
+
+  // Room detection
+  const room = detectRoom();
+  if(room && room !== lastRoom) {
+    document.getElementById('room-name').textContent = room.name;
+    lastRoom = room;
+    drainSanity(2);
+  }
+
+  // Raycasting for interaction
+  raycaster.setFromCamera({ x:0, y:0 }, camera);
+  const hits = raycaster.intersectObjects(interactMeshes);
+  if(hits.length > 0) {
+    const hit = hits[0];
+    const idx = interactMeshes.indexOf(hit.object);
+    const item = interactables[idx];
+    const dist = camera.position.distanceTo(hit.object.position);
+    if(dist < (item.range || 3)) {
+      document.getElementById('interact-prompt').style.display = 'block';
+      interactTarget = item;
+    } else {
+      document.getElementById('interact-prompt').style.display = 'none';
+      interactTarget = null;
+    }
+  } else {
+    document.getElementById('interact-prompt').style.display = 'none';
+    interactTarget = null;
+  }
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// ── Resize ──
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
